@@ -1,68 +1,182 @@
 import java.util.*;
 import java.util.concurrent.*;
 
-class BankAccount {
-    private String accountNumber;
-    private String accountHolder;
-    private double balance;
-    private List<String> transactionHistory;
-    private final Object lock = new Object();
+class OnlineBankingSystem {
+    private static final String EXIT_COMMAND = "exit";
+    private static final Scanner scanner = new Scanner(System.in);
+    private static final Map<String, BankAccount> accounts = new HashMap<>();
+    private static final ExecutorService executorService = Executors.newFixedThreadPool(5);
 
-    public BankAccount(String accountNumber, String accountHolder, double balance) {
-        this.accountNumber = accountNumber;
-        this.accountHolder = accountHolder;
-        this.balance = balance;
-        this.transactionHistory = new ArrayList<>();
+    static {
+      
+        accounts.put("123456", new BankAccount("123456", "John Doe", 1000.0));
+        accounts.put("789012", new BankAccount("789012", "Jane Doe", 500.0));
     }
 
-    public String getAccountNumber() {
-        return accountNumber;
-    }
+    public static void main(String[] args) {
+        while (true) {
+            printMenu();
 
-    public String getAccountHolder() {
-        return accountHolder;
-    }
+            System.out.print("Select an option: ");
+            String choice = scanner.next().toLowerCase();
 
-    public double getBalance() {
-        return balance;
-    }
+            switch (choice) {
+                case "1":
+                    handleDeposit();
+                    break;
 
-    public List<String> getTransactionHistory() {
-        return transactionHistory;
-    }
+                case "2":
+                    handleWithdrawal();
+                    break;
 
-    public void deposit(double amount) {
-        synchronized (lock) {
-            balance += amount;
-            transactionHistory.add("Deposit: +$" + amount);
-        }
-    }
+                case "3":
+                    handleTransfer();
+                    break;
 
-    public void withdraw(double amount) {
-        synchronized (lock) {
-            if (amount <= balance) {
-                balance -= amount;
-                transactionHistory.add("Withdrawal: -$" + amount);
-            } else {
-                System.out.println("Insufficient funds!");
+                case "4":
+                    viewBalance();
+                    break;
+
+                case "5":
+                    viewTransactionHistory();
+                    break;
+
+                case "6":
+                    exitSystem();
+                    break;
+
+                case "7":
+                    handleParallelTransfer();
+                    break;
+
+                default:
+                    System.out.println("Invalid choice. Please try again.");
             }
         }
     }
 
-    public void transfer(BankAccount recipient, double amount) {
-        synchronized (lock) {
-            if (this == recipient) {
-                System.out.println("Cannot transfer to the same account!");
-                return;
-            }
+    private static void printMenu() {
+        System.out.println("1. Deposit");
+        System.out.println("2. Withdraw");
+        System.out.println("3. Transfer");
+        System.out.println("4. View Balance");
+        System.out.println("5. View Transaction History");
+        System.out.println("6. Exit");
+        System.out.println("7. Parallel Transfer");
+    }
 
-            if (amount <= balance) {
-                balance -= amount;
-                recipient.deposit(amount);
-                transactionHistory.add("Transfer to " + recipient.getAccountNumber() + ": -$" + amount);
-            } else {
-                System.out.println("Insufficient funds!");
+    private static double readAmount() {
+        while (true) {
+            try {
+                System.out.print("Enter amount: $");
+                return Double.parseDouble(scanner.next());
+            } catch (NumberFormatException e) {
+                System.out.println("Invalid input. Please enter a numeric value.");
             }
+        }
+    }
+
+    private static void handleDeposit() {
+        String accountNumber = "123456";
+        BankAccount userAccount = accounts.get(accountNumber);
+
+        if (userAccount != null) {
+            double depositAmount = readAmount();
+            userAccount.deposit(depositAmount);
+            System.out.println("Deposit successful. New balance: $" + userAccount.getBalance());
+        } else {
+            System.out.println("Account not found!");
+        }
+    }
+
+    private static void handleWithdrawal() {
+        String accountNumber = "123456";
+        BankAccount userAccount = accounts.get(accountNumber);
+
+        if (userAccount != null) {
+            double withdrawalAmount = readAmount();
+            userAccount.withdraw(withdrawalAmount);
+            System.out.println("Withdrawal successful. New balance: $" + userAccount.getBalance());
+        } else {
+            System.out.println("Account not found!");
+        }
+    }
+
+    private static void handleTransfer() {
+        String sourceAccountNumber = "123456";
+        BankAccount sourceAccount = accounts.get(sourceAccountNumber);
+
+        if (sourceAccount != null) {
+            System.out.print("Enter recipient account number: ");
+            String recipientAccountNumber = scanner.next();
+            BankAccount recipientAccount = accounts.get(recipientAccountNumber);
+
+            if (recipientAccount != null) {
+                double transferAmount = readAmount();
+                sourceAccount.transfer(recipientAccount, transferAmount);
+                System.out.println("Transfer successful. New balance: $" + sourceAccount.getBalance());
+            } else {
+                System.out.println("Recipient account not found!");
+            }
+        } else {
+            System.out.println("Source account not found!");
+        }
+    }
+
+    private static void viewBalance() {
+        String accountNumber = "123456";
+        BankAccount userAccount = accounts.get(accountNumber);
+
+        if (userAccount != null) {
+            System.out.println("Current Balance: $" + userAccount.getBalance());
+        } else {
+            System.out.println("Account not found!");
+        }
+    }
+
+    private static void viewTransactionHistory() {
+        String accountNumber = "123456";
+        BankAccount userAccount = accounts.get(accountNumber);
+
+        if (userAccount != null) {
+            userAccount.getTransactionHistory().forEach(System.out::println);
+        } else {
+            System.out.println("Account not found!");
+        }
+    }
+
+    private static void exitSystem() {
+        System.out.println("Exiting the system. Goodbye!");
+        executorService.shutdown();
+        System.exit(0);
+    }
+
+    private static void handleParallelTransfer() {
+        String sourceAccountNumber = "123456";
+        BankAccount sourceAccount = accounts.get(sourceAccountNumber);
+
+        if (sourceAccount != null) {
+            System.out.print("Enter recipient account number: ");
+            String recipientAccountNumber = scanner.next();
+            BankAccount recipientAccount = accounts.get(recipientAccountNumber);
+
+            if (recipientAccount != null) {
+                double parallelTransferAmount = readAmount();
+                Callable<String> transactionTask = new TransactionTask(sourceAccount, recipientAccount, parallelTransferAmount);
+                Future<String> future = executorService.submit(transactionTask);
+
+                try {
+                    String result = future.get();
+                    System.out.println(result);
+                    System.out.println("New balance: $" + sourceAccount.getBalance());
+                } catch (InterruptedException | ExecutionException e) {
+                    e.printStackTrace();
+                }
+            } else {
+                System.out.println("Recipient account not found!");
+            }
+        } else {
+            System.out.println("Source account not found!");
         }
     }
 }
@@ -82,112 +196,5 @@ class TransactionTask implements Callable<String> {
     public String call() {
         sourceAccount.transfer(destinationAccount, amount);
         return "Transaction completed.";
-    }
-}
-
-class OnlineBankingSystem {
-    public static void main(String[] args) {
-        Scanner scanner = new Scanner(System.in);
-
-        // Create a map to store accounts
-        Map<String, BankAccount> accounts = new HashMap<>();
-        accounts.put("123456", new BankAccount("123456", "John Doe", 1000.0));
-        accounts.put("789012", new BankAccount("789012", "Jane Doe", 500.0));
-
-        ExecutorService executorService = Executors.newFixedThreadPool(5);
-
-        while (true) {
-            System.out.println("1. Deposit");
-            System.out.println("2. Withdraw");
-            System.out.println("3. Transfer");
-            System.out.println("4. View Balance");
-            System.out.println("5. View Transaction History");
-            System.out.println("6. Exit");
-            System.out.println("7. Parallel Transfer");
-
-            System.out.print("Select an option: ");
-            int choice = scanner.nextInt();
-
-            switch (choice) {
-                case 1:
-                    System.out.print("Enter deposit amount: $");
-                    double depositAmount = readAmount(scanner);
-                    accounts.get("123456").deposit(depositAmount);
-                    System.out.println("Deposit successful. New balance: $" + accounts.get("123456").getBalance());
-                    break;
-
-                case 2:
-                    System.out.print("Enter withdrawal amount: $");
-                    double withdrawalAmount = readAmount(scanner);
-                    accounts.get("123456").withdraw(withdrawalAmount);
-                    System.out.println("Withdrawal successful. New balance: $" + accounts.get("123456").getBalance());
-                    break;
-
-                case 3:
-                    System.out.print("Enter recipient account number: ");
-                    String recipientAccountNumber = scanner.next();
-                    BankAccount recipientAccount = accounts.get(recipientAccountNumber);
-
-                    if (recipientAccount != null) {
-                        System.out.print("Enter transfer amount: $");
-                        double transferAmount = readAmount(scanner);
-                        accounts.get("123456").transfer(recipientAccount, transferAmount);
-                        System.out.println("Transfer successful. New balance: $" + accounts.get("123456").getBalance());
-                    } else {
-                        System.out.println("Recipient account not found!");
-                    }
-                    break;
-
-                case 4:
-                    System.out.println("Current Balance: $" + accounts.get("123456").getBalance());
-                    break;
-
-                case 5:
-                    accounts.get("123456").getTransactionHistory().forEach(System.out::println);
-                    break;
-
-                case 6:
-                    System.out.println("Exiting the system. Goodbye!");
-                    executorService.shutdown();
-                    System.exit(0);
-                    break;
-
-                case 7:
-                    System.out.print("Enter recipient account number: ");
-                    String parallelRecipientAccountNumber = scanner.next();
-                    BankAccount parallelRecipientAccount = accounts.get(parallelRecipientAccountNumber);
-
-                    if (parallelRecipientAccount != null) {
-                        System.out.print("Enter transfer amount: $");
-                        double parallelTransferAmount = readAmount(scanner);
-                        Callable<String> transactionTask = new TransactionTask(accounts.get("123456"), parallelRecipientAccount, parallelTransferAmount);
-                        Future<String> future = executorService.submit(transactionTask);
-
-                        try {
-                            String result = future.get();
-                            System.out.println(result);
-                            System.out.println("New balance: $" + accounts.get("123456").getBalance());
-                        } catch (InterruptedException | ExecutionException e) {
-                            e.printStackTrace();
-                        }
-                    } else {
-                        System.out.println("Recipient account not found!");
-                    }
-                    break;
-
-                default:
-                    System.out.println("Invalid choice. Please try again.");
-            }
-        }
-    }
-
-    private static double readAmount(Scanner scanner) {
-        while (true) {
-            try {
-                return Double.parseDouble(scanner.next());
-            } catch (NumberFormatException e) {
-                System.out.println("Invalid input. Please enter a numeric value.");
-            }
-        }
     }
 }
